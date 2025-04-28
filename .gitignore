@@ -1,0 +1,5 @@
+*.db
+mycert.crt
+.env
+*.pem
+__pycache__/

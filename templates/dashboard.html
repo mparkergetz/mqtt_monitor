@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bee Cam Dashboard</title>
+
+  <!-- Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+    rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-body: #f8f9fa;
+      --panel-bg: #fff;
+      --panel-offline-bg: #e0e0e0;
+      --shadow: rgba(0,0,0,0.1);
+      --dot-size: 12px;
+      --green: #28a745;
+      --red: #dc3545;
+      --gray:  gray;
+    }
+    body {
+      margin: 2rem;
+      background: var(--bg-body);
+    }
+    .panel {
+      background: var(--panel-bg);
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px var(--shadow);
+    }
+    .panel-offline {
+      background: var(--panel-offline-bg) !important;
+      opacity: .7;
+    }
+    .status-dot {
+      display: inline-block;
+      width: var(--dot-size);
+      height: var(--dot-size);
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--gray);
+    }
+    .status-dot--on   { background: var(--green); }
+    .status-dot--off  { background: var(--red);   }
+    .status-dot--sync { background: var(--green); }
+  </style>
+</head>
+<body>
+
+  <h1 class="mb-4">Bee Cam Dashboard</h1>
+
+  {#— Define a reusable panel macro —#}
+  {% macro station_panel(id, title, last_seen='') %}
+    <div class="panel" data-station="{{ id }}">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4>{{ title }}</h4>
+        {% if last_seen %}
+          <small id="last-seen-{{ id }}" class="text-muted">{{ last_seen }}</small>
+        {% endif %}
+      </div>
+      {{ caller() }}
+    </div>
+  {% endmacro %}
+
+  {#— Tabs —#}
+  <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+    <li class="nav-item">
+      <a class="nav-link active" data-bs-toggle="tab" href="#status">Status</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#weather">Weather</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="tab" href="#alerts">Alerts</a>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-3">
+    {#— STATUS TAB —#}
+    <div class="tab-pane fade show active" id="status">
+      {% for station, cams in camera_status.items() %}
+        {% call station_panel(
+            station,
+            station|capitalize,
+            station_last_seen.get(station, 'No data')
+        ) %}
+          <table class="table camera-table" id="camera-table-{{ station }}">
+            <thead>
+              <tr>
+                <th>Camera</th>
+                <th>On/Off</th>
+                <th>Sync</th>
+                <th>Last Seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cam_name, cam in cams.items() %}
+                <tr>
+                  <td>{{ cam.camera }}</td>
+                  <td>
+                    <span class="status-dot status-dot--{{ cam.camera_on and 'on' or 'off' }}"></span>
+                  </td>
+                  <td>
+                    <span class="status-dot status-dot--{{ cam.sync_status == 'good' and 'sync' or 'off' }}"></span>
+                  </td>
+                  <td>{{ cam.last_seen }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endcall %}
+      {% endfor %}
+    </div>
+
+    {#— WEATHER TAB —#}
+    <div class="tab-pane fade" id="weather">
+      {% for st in stations %}
+        {% call station_panel(st, st|capitalize ~ ' Sensors') %}
+          <div class="row">
+            {% for fld, data in weather_data[st].items() %}
+              <div class="col-md-6 mb-4">
+                <canvas
+                  id="chart-{{ st }}-{{ fld|replace(':','_')|replace(' ','_')|replace('/','_') }}"
+                  height="200"></canvas>
+              </div>
+            {% endfor %}
+          </div>
+        {% endcall %}
+      {% endfor %}
+    </div>
+
+    {#— ALERTS TAB —#}
+    <div class="tab-pane fade" id="alerts">
+      {% call station_panel('alerts', 'System Alerts') %}
+        <ul class="list-group">
+          {% if alerts_data %}
+            {% for ts, msg in alerts_data %}
+              <li class="list-group-item">
+                <strong>{{ ts }}</strong>: {{ msg }}
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="list-group-item"><em>No alerts.</em></li>
+          {% endif %}
+        </ul>
+      {% endcall %}
+    </div>
+  </div>
+
+  {#— Bootstrap & Chart.js deps —#}
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
+    defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1" defer></script>
+
+  {#— Main JS: cached DOM, unified fetch/update, helper fns —#}
+  <script type="module" defer>
+    const weatherData  = {{ weather_data|tojson }};
+    const stations     = {{ stations|tojson }};
+    const fieldLabels  = {
+      temp: 'Temperature (°C)',
+      humid: '% Relative Humidity',
+      pres:  'Pressure (hPa)',
+      wind:  'Wind Speed (m/s)',
+      int_temp: 'Internal Temperature (°C)'
+    };
+
+    function parseTimeSeries(raw, gapMin) {
+      const pts = [];
+      raw.forEach(([t, v], i) => {
+        pts.push({ x: t, y: parseFloat(v) });
+        if (i+1 < raw.length) {
+          const curr = new Date(t).getTime();
+          const nxt  = new Date(raw[i+1][0]).getTime();
+          if ((nxt - curr)/60000 > gapMin) {
+            pts.push({ x: raw[i+1][0], y: null });
+          }
+        }
+      });
+      return pts;
+    }
+
+    function initOrUpdateCharts(st, data, isUpdate=false) {
+      Object.entries(data).forEach(([fld, raw]) => {
+        const id    = `chart-${st}-${fld.replace(/[: /]/g,'_')}`;
+        const chart = Chart.getChart(id);
+        const values = parseTimeSeries(raw, isUpdate?60:30);
+
+        if (chart) {
+          chart.data.datasets[0].data = values;
+          chart.update('none');
+        } else {
+          const ctx = document.getElementById(id).getContext('2d');
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              datasets: [{
+                label: fieldLabels[fld]||fld,
+                data:  values,
+                fill:  false,
+                tension: .2,
+                pointRadius: 0,
+                spanGaps: false,
+                parsing: { xAxisKey:'x', yAxisKey:'y' }
+              }]
+            },
+            options: {
+              animation: false,
+              responsive: true,
+              scales: {
+                x: {
+                  type: 'time',
+                  time: {
+                    parser: "yyyy-MM-dd'T'HH:mm:ss",
+                    tooltipFormat: 'MM-dd HH:mm',
+                    displayFormats: {
+                      hour:   'MM-dd HH:mm',
+                      minute: 'MM-dd HH:mm'
+                    }
+                  },
+                  title: { display:true, text:'Time' },
+                  grid:  { display:false }
+                },
+                y: {
+                  title: { display:true, text: fieldLabels[fld]||fld },
+                  ticks: {
+                    callback: v => parseFloat(v).toFixed(1)
+                  },
+                  grid: { display:false }
+                }
+              },
+              plugins: { legend:{ display:false } }
+            }
+          });
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Cache elements
+      const stationElems = {};
+      stations.forEach(st => {
+        stationElems[st] = {
+          panel:         document.querySelector(`.panel[data-station="${st}"]`),
+          tbody:         document.querySelector(`#camera-table-${st} tbody`),
+          lastSeenLabel: document.getElementById(`last-seen-${st}`)
+        };
+      });
+
+      // Initialize charts
+      stations.forEach(st => initOrUpdateCharts(st, weatherData[st]));
+
+      // Camera status refresher
+      async function refreshCameraStatus() {
+        try {
+          const { cameras={}, station_last_seen={} } =
+                  await fetch('/api/camera_status').then(r=>r.json());
+          const now = Date.now();
+
+          for (const [st, elems] of Object.entries(stationElems)) {
+            const { panel, tbody, lastSeenLabel } = elems;
+            if (!panel || !tbody) continue;
+
+            const lastISO = station_last_seen[st];
+            const diffMin = lastISO
+              ? (now - new Date(lastISO).getTime())/60000
+              : Infinity;
+            const offline = diffMin > 10;
+
+            panel.classList.toggle('panel-offline', offline);
+            lastSeenLabel.textContent = lastISO
+              ? `Last Seen: ${new Date(lastISO).toLocaleString()}`
+              : 'No data';
+
+            const cams = cameras[st] || {};
+            tbody.innerHTML = Object.values(cams).map(cam => {
+              const onCls   = offline
+                ? 'status-dot'
+                : `status-dot status-dot--${cam.camera_on?'on':'off'}`;
+              const syncCls = offline
+                ? 'status-dot'
+                : `status-dot status-dot--${cam.sync_status==='good'?'sync':'off'}`;
+
+              return `
+                <tr>
+                  <td>${cam.camera}</td>
+                  <td><span class="${onCls}"></span></td>
+                  <td><span class="${syncCls}"></span></td>
+                  <td>${cam.last_seen}</td>
+                </tr>`;
+            }).join('');
+          }
+        } catch (e) {
+          console.error('Error refreshing camera status', e);
+        }
+      }
+
+      await refreshCameraStatus();
+      setInterval(refreshCameraStatus, 30_000);
+
+      // Weather updater
+      setInterval(async () => {
+        for (const st of stations) {
+          try {
+            const data = await fetch(`/api/weather/${st}`).then(r=>r.json());
+            initOrUpdateCharts(st, data, true);
+          } catch (e) {
+            console.error(`Error updating weather for ${st}`, e);
+          }
+        }
+      }, 30_000);
+    });
+  </script>
+
+</body>
+</html>
