@@ -65,8 +65,9 @@ def start_cloudflared():
         logging.error("Tunnel started but no public URL was detected.")
         send_email("Cloudflare Tunnel FAILED", "Started tunnel, but no public URL was found.")
 
-    # Let the tunnel keep running in background
-    logging.info("Tunnel started. Letting process run in background.")
+    logging.info("Tunnel started; waiting for cloudflared to exit…")
+    return_code = process.wait()
+    logging.info(f"cloudflared exited with code {return_code}")
 
 if __name__ == "__main__":
     start_cloudflared()
