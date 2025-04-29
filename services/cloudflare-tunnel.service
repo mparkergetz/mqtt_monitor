@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare Tunnel to expose port 8000 and send email
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/home/mpgetz/repos/mqtt_monitor/.env
+WorkingDirectory=/home/mpgetz/repos/mqtt_monitor
+ExecStart=/home/mpgetz/miniconda3/envs/mqtt_monitor/bin/python /home/mpgetz/repos/mqtt_monitor/cloudflare_tunnel_notify.py
+User=mpgetz
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

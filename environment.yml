@@ -1,4 +1,4 @@
-name: camera_traps
+name: mqtt_monitor
 channels:
   - conda-forge
   - defaults

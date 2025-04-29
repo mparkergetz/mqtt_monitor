@@ -3,11 +3,12 @@ Description=MQTT Monitor Service
 After=network.target
 
 [Service]
+Type=simple
 WorkingDirectory=/home/mpgetz/repos/mqtt_monitor
-ExecStart=/home/mpgetz/repos/mqtt_monitor/venv/bin/python mqtt_monitor.py
 EnvironmentFile=/home/mpgetz/repos/mqtt_monitor/.env
 Restart=always
 User=mpgetz
+ExecStart=/bin/bash -c "source /home/mpgetz/miniconda3/etc/profile.d/conda.sh && conda activate mqtt_monitor && python mqtt_monitor.py"
 
 [Install]
 WantedBy=multi-user.target

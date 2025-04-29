@@ -49,11 +49,7 @@ def send_email_alert(subject, body):
     msg.set_content(body)
     msg["Subject"] = subject
     msg["From"] = EMAIL_SENDER
-
-    if isinstance(EMAIL_RECEIVER, str): # HANDLE SINGLE OR MULTIPLE ADDRESSES
-        recipient_list = [EMAIL_RECEIVER]
-    else:
-        recipient_list = EMAIL_RECEIVER
+    recipient_list = [email.strip() for email in EMAIL_RECEIVER.split(",") if email.strip()]
     msg["To"] = ", ".join(recipient_list)
 
     try:
@@ -61,7 +57,7 @@ def send_email_alert(subject, body):
             server.starttls()
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
-            logging.debug(f"Alert email sent successfully to {msg['To']}")
+            logging.debug(f"Alert email sent to {msg['To']}")
     except Exception as e:
         logging.error(f"Failed to send email: {e}")
 

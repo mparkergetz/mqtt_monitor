@@ -3,3 +3,4 @@ mycert.crt
 .env
 *.pem
 __pycache__/
+*.log
