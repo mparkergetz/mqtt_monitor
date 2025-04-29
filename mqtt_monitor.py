@@ -27,6 +27,7 @@ MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 8883))  # fallback
 MQTT_USERNAME = os.getenv("MQTT_USERNAME")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+MQTT_TOPIC = os.getenv("MQTT_TOPIC", "#")
 CA_CERT = "./mycert.crt"
 
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
