@@ -1,0 +1,14 @@
+[Unit]
+Description=BeeCam Dashboard
+After=network.target
+
+[Service]
+WorkingDirectory=/home/mpgetz/repos/mqtt_monitor
+ExecStart=/home/mpgetz/repos/mqtt_monitor/venv/bin/gunicorn \
+  --bind 127.0.0.1:8000 query_dbs:app
+EnvironmentFile=/home/mpgetz/repos/mqtt_monitor/.env
+Restart=always
+User=mpgetz
+
+[Install]
+WantedBy=multi-user.target
